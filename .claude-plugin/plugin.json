@@ -1,0 +1,8 @@
+{
+  "name": "software-factory",
+  "version": "0.1.0",
+  "description": "Multi-agent development pipeline: spec-writer -> builder (planner) -> domain specialists -> reviewer, with a fix loop and final user approval.",
+  "author": {
+    "name": "Loïc Dubouloz"
+  }
+}

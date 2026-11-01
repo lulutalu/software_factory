@@ -1,0 +1,91 @@
+# software-factory
+
+A Claude Code plugin that runs a multi-agent development pipeline from a single command:
+
+```
+/factory <request>
+      │
+      ▼
+ spec-writer ──(open questions? ask user)──► .factory/spec.md
+      │
+      ▼
+ ┌──► builder (planner) ─────────────────► .factory/plan.md   (tasks, waves, file ownership)
+ │        │
+ │        ▼
+ │   specialists, wave by wave (parallel inside a wave)
+ │   frontend · backend · data · tests ──► code + .factory/reports/round-N/
+ │        │
+ │        ▼
+ │   code-reviewer ‖ security-reviewer ──► .factory/review-code.md
+ │        │      (in parallel)               .factory/review-security.md
+ │        │
+ └─ either says CHANGES_REQUESTED (max 3 rounds)
+          │ both APPROVED (or 3 rounds used)
+          ▼
+   user approval: Approve · Request changes · Reject
+```
+
+Nothing is ever committed. You review the result and commit it yourself.
+
+## Live dashboard
+
+When a run starts, `/factory` launches a small local web page and prints its URL (by default `http://127.0.0.1:8765/`; the next free port is used if that one is busy). The page updates every 2 seconds and shows:
+- the current step and round,
+- the waves of tasks and each specialist's status,
+- both review verdicts with blocking / non-blocking counts,
+- every file in `.factory/` (spec, plan, reports, reviews, log), rendered.
+
+It's **read-only**: you still answer questions and approve in the terminal. It needs only `python3` (standard library), listens on `127.0.0.1` only, and stops by itself after 30 minutes without visitors. To stop it earlier, run `kill <pid>` (the PID is in `.factory/ui.json`).
+
+To open the dashboard on a past run by hand:
+```bash
+python3 /home/lulu/projects/software_factory/ui/server.py --factory-dir /path/to/project/.factory
+```
+
+## Install
+
+**Try it for one session (no install):**
+```bash
+claude --plugin-dir /home/lulu/projects/software_factory
+```
+
+**Install it for every project** (inside Claude Code):
+```
+/plugin marketplace add /home/lulu/projects/software_factory
+/plugin install software-factory@software-factory-local
+```
+Restart Claude Code after installing. After you edit the plugin, run `/plugin update software-factory@software-factory-local` (or `claude plugin update …`) and restart again.
+
+## Usage
+
+From any project directory:
+```
+/software-factory:factory add a /health endpoint that returns uptime and version
+```
+(Plugin skills are namespaced. If no other skill is called `factory`, `/factory` also works.)
+
+The pipeline creates a `.factory/` folder in the target project with all handoff files. Add it to that project's `.gitignore` if you don't want it tracked.
+
+## Agents
+
+| Agent | Role | Can edit code? |
+|---|---|---|
+| `spec-writer` | Turns the request into requirements (R…) and acceptance criteria (A…), and lists open questions | No (writes `spec.md` only) |
+| `builder` | Architect/planner: splits the spec into tasks assigned to specialists, in waves, with per-file ownership | No (writes `plan.md` only) |
+| `frontend` | UI, components, styling | Yes, only the files it owns |
+| `backend` | Server/API/CLI logic | Yes, only the files it owns |
+| `data` | Schemas, migrations, queries | Yes, only the files it owns |
+| `tests` | Tests for acceptance criteria; runs the suite | Yes, test files only |
+| `code-reviewer` | Spec coverage, runs tests, correctness and maintainability review | No (writes `review-code.md` only) |
+| `security-reviewer` | Vulnerability audit with severity ratings, dependency audit | No (writes `review-security.md` only) |
+
+## Customising
+
+- **Add a specialist:** create `agents/<name>.md` (copy an existing specialist), then add it to the specialist table in `agents/builder.md` and the agent table in `skills/factory/SKILL.md`.
+- **Change the loop cap:** edit "max 3 rounds" in `skills/factory/SKILL.md`.
+- **Change the dashboard:** `ui/index.html` (page) and `ui/server.py` (API). The page reads `.factory/status.json`, whose format is defined in `skills/factory/SKILL.md`.
+- **Change what blocks a review:** edit the verdict rules in `agents/code-reviewer.md` and `agents/security-reviewer.md`. A round passes only if **both** approve. Currently blocking:
+  - *code-reviewer*: test failures, spec not fully implemented, specialist notes/blockers (tool warnings like lint are reported but don't block), correctness bugs, serious maintainability problems.
+  - *security-reviewer*: any Medium, High or Critical finding (Low/Info are reported only).
+
+  The reviewers only decide whether another round runs; you still make the final call.

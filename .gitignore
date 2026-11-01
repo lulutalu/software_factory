@@ -1,0 +1,27 @@
+# Factory run output (if the plugin is ever run on this repo itself)
+.factory/
+.factory-archive/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Browser tooling artifacts (Playwright MCP screenshots/logs)
+.playwright-mcp/
+
+# Local Claude Code settings (personal, not shared)
+.claude/settings.local.json
+
+# Secrets: never commit
+.env
+.env.*
+*.pem
+*.key
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.vscode/
+.idea/

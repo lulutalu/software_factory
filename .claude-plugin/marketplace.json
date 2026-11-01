@@ -1,0 +1,14 @@
+{
+  "name": "software-factory-local",
+  "description": "Local marketplace for the software-factory plugin.",
+  "owner": {
+    "name": "Loïc Dubouloz"
+  },
+  "plugins": [
+    {
+      "name": "software-factory",
+      "source": "./",
+      "description": "Multi-agent development pipeline with review loop and user approval."
+    }
+  ]
+}
