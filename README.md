@@ -40,7 +40,9 @@ When a run starts, `/factory` launches a small local web page and prints its URL
 - both review verdicts with blocking / non-blocking counts,
 - every file in `.factory/` (spec, plan, reports, reviews, log), rendered.
 
-It's **read-only**: you still answer questions and approve in the terminal. It needs only `python3` (standard library), listens on `127.0.0.1` only, and stops by itself after 30 minutes without visitors. To stop it earlier, run `kill <pid>` (the PID is in `.factory/ui.json`).
+**Answering from the browser:** when the spec-writer has open questions, or at the final approval, a "Your input is needed" panel appears at the top of the page (and the tab title shows ●). You can answer there **or** in the terminal: the first answer wins. Everything else on the page is read-only.
+
+It needs only `python3` (standard library), listens on `127.0.0.1` only (answers need a random per-page token, a same-origin request and the right Host header, so other websites can't answer for you), and stops by itself after 30 minutes without visitors. To stop it earlier, run `kill <pid>` (the PID is in `.factory/ui.json`).
 
 To open the dashboard on a past run by hand:
 ```bash
@@ -91,7 +93,7 @@ Opus is used for the roles that make judgements (spec, plan, reviews) and Sonnet
 - **Add a specialist:** create `agents/<name>.md` (copy an existing specialist), then add it to the specialist table in `agents/builder.md` and the agent table in `skills/factory/SKILL.md`.
 - **Change an agent's model or effort:** edit `model:` (`opus`, `sonnet`, `haiku`, `inherit` or a full model ID) and `effort:` (`low`, `medium`, `high`, `xhigh`, `max`) in its frontmatter in `agents/<name>.md`. `claude plugin validate` doesn't check these values, so double-check spelling.
 - **Change the loop cap:** edit "max 2 rounds" in `skills/factory/SKILL.md` (Step 2 heading, the `round = …` loop, the `round < 2` / `round = 2` rules, the frontmatter description and `max_rounds` in the `status.json` example).
-- **Change the dashboard:** `ui/index.html` (page) and `ui/server.py` (API). The page reads `.factory/status.json`, whose format is defined in `skills/factory/SKILL.md`.
+- **Change the dashboard:** `ui/index.html` (page), `ui/server.py` (API) and `ui/wait_answer.py` (answer watcher). The page reads `.factory/status.json` and `.factory/inbox/pending.json`; both formats are defined in `skills/factory/SKILL.md`.
 - **Change what blocks a review:** edit the verdict rules in `agents/code-reviewer.md` and `agents/security-reviewer.md`. A round passes only if **both** approve. Currently blocking:
   - *code-reviewer*: test failures, spec not fully implemented, specialist notes/blockers (tool warnings like lint are reported but don't block), correctness bugs, serious maintainability problems.
   - *security-reviewer*: any Medium, High or Critical finding (Low/Info are reported only).

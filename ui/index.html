@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Software Factory</title>
 <link rel="icon" href="data:,">
+<meta name="factory-token" content="__FACTORY_TOKEN__">
 <style>
   :root {
     --bg: #f6f7f9; --panel: #fff; --text: #1d2330; --muted: #6b7280; --border: #e3e6eb;
@@ -71,6 +72,19 @@
   .doc pre code { background: none; padding: 0; }
   .doc .verdict-line { font-weight: 700; }
   .empty { color: var(--muted); font-style: italic; }
+
+  .inbox { border: 2px solid var(--accent); }
+  .inbox h2 { color: var(--accent); }
+  .inbox fieldset { border: 1px solid var(--border); border-radius: 6px; margin: 0 0 12px; padding: 10px 12px; }
+  .inbox legend { font-weight: 600; padding: 0 4px; }
+  .inbox label.opt { display: block; padding: 3px 0; cursor: pointer; }
+  .inbox label.opt small { color: var(--muted); margin-left: 6px; }
+  .inbox textarea { width: 100%; min-height: 60px; margin-top: 6px; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+  .inbox .summary { max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 0 12px; margin-bottom: 12px; }
+  .inbox button[type=submit] { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 8px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+  .inbox button[disabled] { opacity: .6; cursor: default; }
+  .inbox .msg { margin-left: 12px; }
+  .inbox .hint { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
   .error { color: var(--bad); }
 </style>
 </head>
@@ -81,6 +95,12 @@
   <span class="meta" id="meta"></span>
 </header>
 <main>
+  <section class="panel inbox" id="inbox" hidden>
+    <h2 id="inbox-title">Your input is needed</h2>
+    <p class="hint">Answer here or in the terminal: the first answer wins.</p>
+    <div id="inbox-body"></div>
+  </section>
+
   <section class="panel">
     <h2>Pipeline</h2>
     <div class="steps" id="steps"></div>
@@ -119,6 +139,94 @@ const STEPS = [
 const STEP_ALIAS = { setup: "spec", questions: "spec" };
 const $ = (id) => document.getElementById(id);
 let selected = null, lastStateJson = "", fileMtimes = {}, seenMtimes = {};
+const TOKEN = document.querySelector('meta[name="factory-token"]').content;
+const BASE_TITLE = document.title;
+let inboxKey = null;  // id of the form currently shown, so polling doesn't wipe what you type
+
+// Build an element: el("p", { class: "x" }, "text", child, ...). Text goes in as text nodes, never HTML.
+function el(tag, attrs = {}, ...children) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") e.className = v; else if (v === true) e.setAttribute(k, ""); else if (v !== false) e.setAttribute(k, v);
+  }
+  for (const c of children) e.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return e;
+}
+
+const DECISION_LABELS = [
+  ["approve", "Approve", "accept the work (nothing is committed; you commit yourself)"],
+  ["request_changes", "Request changes", "run one more round with your feedback"],
+  ["reject", "Reject", "stop the run and leave the files as they are"],
+];
+
+function questionsForm(pending) {
+  const form = el("form");
+  for (const q of pending.questions || []) {
+    const fs = el("fieldset", {}, el("legend", {}, q.question || q.id));
+    for (const opt of q.options || []) {
+      fs.append(el("label", { class: "opt" }, el("input", { type: q.multi ? "checkbox" : "radio", name: q.id, value: opt }), " " + opt));
+    }
+    fs.append(el("textarea", { name: q.id + "__text", placeholder: (q.options || []).length ? "Other / details (optional if you picked an option)" : "Your answer" }));
+    form.append(fs);
+  }
+  form.collect = () => {
+    const answers = {};
+    for (const q of pending.questions || []) {
+      answers[q.id] = {
+        choices: [...form.querySelectorAll(`input[name="${CSS.escape(q.id)}"]:checked`)].map((i) => i.value),
+        text: form.elements[q.id + "__text"].value,
+      };
+    }
+    return { answers };
+  };
+  return form;
+}
+
+function approvalForm(pending) {
+  const form = el("form");
+  if (pending.summary) { const sum = el("div", { class: "summary doc" }); sum.innerHTML = renderMarkdown(pending.summary); form.append(sum); }
+  const fs = el("fieldset", {}, el("legend", {}, "Your decision"));
+  for (const [value, label, help] of DECISION_LABELS) {
+    fs.append(el("label", { class: "opt" }, el("input", { type: "radio", name: "decision", value, required: true }), " " + label, el("small", {}, help)));
+  }
+  fs.append(el("textarea", { name: "feedback", placeholder: "Feedback (required for Request changes)" }));
+  form.append(fs);
+  form.collect = () => ({ decision: (form.querySelector('input[name="decision"]:checked') || {}).value, feedback: form.elements.feedback.value });
+  return form;
+}
+
+function renderInbox(pending, answered) {
+  const key = pending ? pending.id + (answered ? ":answered" : "") : null;
+  document.title = pending && !answered ? "● Input needed · " + BASE_TITLE : BASE_TITLE;
+  if (key === inboxKey) return;
+  inboxKey = key;
+  $("inbox").hidden = !pending;
+  if (!pending) return;
+  $("inbox-title").textContent = pending.title || (pending.kind === "approval" ? "Your approval is needed" : "Questions from the spec-writer");
+  const body = $("inbox-body");
+  if (answered) { body.replaceChildren(el("p", { class: "empty" }, "Answer received. The orchestrator picks it up within a few seconds.")); return; }
+
+  const form = pending.kind === "approval" ? approvalForm(pending) : questionsForm(pending);
+  const btn = el("button", { type: "submit" }, "Send answer"), msg = el("span", { class: "msg" });
+  form.append(btn, msg);
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    btn.disabled = true; msg.className = "msg"; msg.textContent = "Sending…";
+    try {
+      const r = await fetch("/api/answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Factory-Token": TOKEN },
+        body: JSON.stringify({ id: pending.id, ...form.collect() }),
+      });
+      const res = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(res.error || "HTTP " + r.status);
+      msg.textContent = "Sent."; lastStateJson = ""; tick();
+    } catch (err) {
+      msg.className = "msg error"; msg.textContent = "Not sent: " + err.message; btn.disabled = false;
+    }
+  };
+  body.replaceChildren(form);
+}
 
 function esc(s) {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -157,12 +265,12 @@ function renderSteps(status) {
     `<div class="step ${i < idx ? "done" : ""} ${i === idx ? "current" : ""}">${i < idx ? "✓ " : ""}${label}</div>`
   ).join("");
   if (status && status.round) {
-    const extra = status.step === "questions" ? " · waiting for your answers in the terminal" :
-                  status.step === "approval" ? " · waiting for your decision in the terminal" : "";
+    const extra = status.step === "questions" ? " · waiting for your answers (above or in the terminal)" :
+                  status.step === "approval" ? " · waiting for your decision (above or in the terminal)" : "";
     const max = Math.max(status.max_rounds || 2, status.round);  // extra round requested by the user
     $("round").textContent = `Round ${status.round} / ${max}${extra}`;
   } else {
-    $("round").textContent = status && status.step === "questions" ? "Waiting for your answers in the terminal" : "";
+    $("round").textContent = status && status.step === "questions" ? "Waiting for your answers (above or in the terminal)" : "";
   }
 }
 
@@ -224,13 +332,15 @@ async function tick() {
   let state;
   try { state = await (await fetch("/api/state")).json(); }
   catch { $("meta").textContent = "server stopped"; return; }
-  const json = JSON.stringify(state.status) + JSON.stringify(state.verdicts) + JSON.stringify(state.files);
+  const json = JSON.stringify(state.status) + JSON.stringify(state.verdicts) + JSON.stringify(state.files)
+             + JSON.stringify(state.pending) + state.answered;
   if (json === lastStateJson) return;
   lastStateJson = json;
 
   const s = state.status;
   $("request").textContent = s && s.request ? s.request : (state.exists ? "Run starting…" : "Waiting for a run…");
   $("meta").textContent = s && s.updated_at ? "updated " + new Date(s.updated_at).toLocaleTimeString() : "";
+  renderInbox(state.pending, state.answered);
   renderSteps(s);
   renderWaves(s);
   for (const f of state.files) { fileMtimes[f.path] = f.mtime; if (!(f.path in seenMtimes)) seenMtimes[f.path] = f.mtime; }

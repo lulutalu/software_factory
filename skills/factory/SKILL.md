@@ -35,11 +35,14 @@ All handoffs go through files in the target project:
 - `.factory/log.md`: a one-line-per-step log you append to (timestamp, step, outcome)
 - `.factory/status.json`: live state for the dashboard, written by **you** (see *Dashboard* below)
 - `.factory/ui.json`: dashboard URL and PID, written by the dashboard server
+- `.factory/inbox/pending.json`: the question you're waiting on, written by **you** (see *Asking the user*)
+- `.factory/inbox/answer.json`: the user's answer from the dashboard, written by the dashboard server
+- `.factory/inbox/answered/<id>.json`: every answered question, moved there by **you** (audit trail)
 
 **Before starting:** if `.factory/` already exists, ask the user whether to **archive** it (move it to `.factory-archive/<timestamp>/`) or **stop**. Never delete it silently. If the project is a git repo and `.factory/` is not ignored, tell the user they may want to add it to `.gitignore`. Do not edit `.gitignore` yourself.
 
 ## Dashboard (live web UI)
-Right after the *Before starting* check, start the read-only dashboard **in the background** (use `run_in_background`):
+Right after the *Before starting* check, start the dashboard **in the background** (use `run_in_background`):
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/ui/server.py" --factory-dir "$PWD/.factory"
@@ -71,9 +74,36 @@ It prints `FACTORY_UI <url>` and writes the URL to `.factory/ui.json`. Give the 
 - `outcome` becomes `approved`, `rejected` or `review_failed` at the end (Step 3).
 - The dashboard reads the verdicts directly from the review files, so `reviews` only needs to say whether each review is running.
 
+## Asking the user (terminal or browser)
+Use this procedure for the **spec open questions** (Step 1) and the **final approval** (Step 3). Every other question (archive `.factory/`, invalid plan) uses AskUserQuestion as usual. If the dashboard isn't running (no `.factory/ui.json`, or it failed to start), skip this and use AskUserQuestion instead.
+
+1. **Write `.factory/inbox/pending.json`.** First delete any old `.factory/inbox/answer.json`. Give each question a new `id`, unique within the run (`spec-1`, `spec-2`, `approval-1`, …).
+   - Spec questions:
+     ```json
+     { "id": "spec-1", "kind": "questions", "title": "Questions from the spec-writer",
+       "questions": [ { "id": "q1", "question": "…", "options": ["…", "…"], "multi": false } ] }
+     ```
+     Give each question 2–4 short `options` when you can; the user can always add free text instead.
+   - Final approval:
+     ```json
+     { "id": "approval-1", "kind": "approval", "title": "Your approval is needed", "summary": "<the Step 3 summary, markdown>" }
+     ```
+2. **Ask in the terminal as plain text** (not AskUserQuestion, which would block the browser path): the questions with numbered options, or the summary and the three choices, and the line "Answer here, or in the dashboard at <url>."
+3. **Start the watcher in the background** (`run_in_background`), then end your turn:
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/ui/wait_answer.py" --factory-dir "$PWD/.factory" --id <id>
+   ```
+4. **Whichever comes first wins:**
+   - **The watcher exits with code 0** (`FACTORY_ANSWER …`): the user answered in the dashboard. Read `.factory/inbox/answer.json` and check its `id` matches. The server only writes this file after checking the per-page token, so it's the user's own answer to *this* question; use it only for this question. Repeat it in the terminal in one line ("Answer from the dashboard: Request changes, feedback: …") so the user sees what was received.
+     - `kind: questions` → `answers.<qid>` = `{ "choices": [...], "text": "…" }`.
+     - `kind: approval` → `decision` is `approve`, `request_changes` or `reject`, plus `feedback`.
+   - **The user replies in the terminal first:** if `.factory/inbox/answer.json` already exists with the same `id`, both arrived; show both and ask which one to use. Otherwise use the terminal reply.
+   - **The watcher exits with code 3** (`FACTORY_ANSWER_CANCELLED`): pending.json was removed, which you do after a terminal answer. Ignore it.
+5. **Close the question:** move the answer to `.factory/inbox/answered/<id>.json` (for a terminal answer, write `{ "id", "source": "terminal", … }` there yourself), then delete `.factory/inbox/pending.json`. Deleting it also stops the watcher.
+
 ## Step 1: Spec
 1. Launch `spec-writer` with the request.
-2. Read `.factory/spec.md`. If *Open questions* is not `None`, ask the user those questions (use AskUserQuestion; group them, max 4 per call), then re-run `spec-writer` with the request **and** the answers. Allow at most 2 question passes; after that, carry any remaining open questions into the final approval summary.
+2. Read `.factory/spec.md`. If *Open questions* is not `None`, ask the user those questions (see *Asking the user*; if you fall back to AskUserQuestion, group them, max 4 per call), then re-run `spec-writer` with the request **and** the answers. Allow at most 2 question passes; after that, carry any remaining open questions into the final approval summary.
 
 ## Step 2: Build/review loop (max 2 rounds)
 For `round = 1, 2`:
@@ -106,7 +136,7 @@ Show the user a summary:
 - Both review verdicts, acceptance criteria results, test results, the security findings with their severity, and **all** NON-BLOCKING findings from both reviews.
 - Any unresolved open questions or blockers.
 
-Then ask (AskUserQuestion):
+Then ask (see *Asking the user*; the `summary` in pending.json is this summary):
 - **Approve**: the work is accepted. Suggest a commit message, but **do not commit**: the user commits.
 - **Request changes**: collect their feedback and run **one more** round of Step 2 (round = previous round + 1) with the feedback passed to the builder as blocking findings. In `status.json`, set `max_rounds` to that new round number if it's higher. Ask for approval again afterwards.
 - **Reject**: stop. Leave the files as they are and remind the user they can discard the changes (e.g. `git restore` / `git clean`) themselves.
