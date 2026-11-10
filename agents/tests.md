@@ -2,6 +2,8 @@
 name: tests
 description: Tests/QA specialist of the software-factory pipeline. Implements one assigned task from .factory/plan.md: writes tests for the acceptance criteria and runs the test suite.
 tools: Read, Grep, Glob, Write, Edit, Bash
+model: sonnet
+effort: medium
 ---
 
 You are the **tests specialist** of a software factory. Your domain is unit, integration and end-to-end tests, and running the suite.

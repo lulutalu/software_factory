@@ -19,13 +19,18 @@ A Claude Code plugin that runs a multi-agent development pipeline from a single 
  │   code-reviewer ‖ security-reviewer ──► .factory/review-code.md
  │        │      (in parallel)               .factory/review-security.md
  │        │
- └─ either says CHANGES_REQUESTED (max 3 rounds)
-          │ both APPROVED (or 3 rounds used)
+ └─ either says CHANGES_REQUESTED (max 2 rounds)
+          │ both APPROVED (or 2 rounds used)
           ▼
    user approval: Approve · Request changes · Reject
 ```
 
 Nothing is ever committed. You review the result and commit it yourself.
+
+Safety checks built into the loop:
+- **Plan check:** before any specialist runs, the orchestrator checks `plan.md` (valid specialist, wave and files on every task; no file shared by two tasks in the same wave). If the check fails, the builder gets one retry, then you're asked.
+- **Verdict check:** a review whose verdict line can't be read gets one re-run. If it's still unreadable, it counts as CHANGES_REQUESTED and you're told. The dashboard shows it as `INVALID`.
+- **Extra rounds:** "Request changes" at the end adds a round beyond the cap (the dashboard shows e.g. `Round 3 / 3`).
 
 ## Live dashboard
 
@@ -68,21 +73,24 @@ The pipeline creates a `.factory/` folder in the target project with all handoff
 
 ## Agents
 
-| Agent | Role | Can edit code? |
-|---|---|---|
-| `spec-writer` | Turns the request into requirements (R…) and acceptance criteria (A…), and lists open questions | No (writes `spec.md` only) |
-| `builder` | Architect/planner: splits the spec into tasks assigned to specialists, in waves, with per-file ownership | No (writes `plan.md` only) |
-| `frontend` | UI, components, styling | Yes, only the files it owns |
-| `backend` | Server/API/CLI logic | Yes, only the files it owns |
-| `data` | Schemas, migrations, queries | Yes, only the files it owns |
-| `tests` | Tests for acceptance criteria; runs the suite | Yes, test files only |
-| `code-reviewer` | Spec coverage, runs tests, correctness and maintainability review | No (writes `review-code.md` only) |
-| `security-reviewer` | Vulnerability audit with severity ratings, dependency audit | No (writes `review-security.md` only) |
+| Agent | Role | Can edit code? | Model / effort |
+|---|---|---|---|
+| `spec-writer` | Turns the request into requirements (R…) and acceptance criteria (A…), and lists open questions | No (writes `spec.md` only) | opus / high |
+| `builder` | Architect/planner: splits the spec into tasks assigned to specialists, in waves, with per-file ownership | No (writes `plan.md` only) | opus / high |
+| `frontend` | UI, components, styling | Yes, only the files it owns | sonnet / medium |
+| `backend` | Server/API/CLI logic | Yes, only the files it owns | sonnet / medium |
+| `data` | Schemas, migrations, queries | Yes, only the files it owns | sonnet / medium |
+| `tests` | Tests for acceptance criteria; runs the suite | Yes, test files only | sonnet / medium |
+| `code-reviewer` | Spec coverage, runs tests, correctness and maintainability review | No (writes `review-code.md` only) | opus / high |
+| `security-reviewer` | Vulnerability audit with severity ratings, dependency audit | No (writes `review-security.md` only) | opus / high |
+
+Opus is used for the roles that make judgements (spec, plan, reviews) and Sonnet for the specialists, which follow precise task instructions and often run several at once. The `/factory` orchestrator itself is not pinned: it uses your session's `/model` and effort.
 
 ## Customising
 
 - **Add a specialist:** create `agents/<name>.md` (copy an existing specialist), then add it to the specialist table in `agents/builder.md` and the agent table in `skills/factory/SKILL.md`.
-- **Change the loop cap:** edit "max 3 rounds" in `skills/factory/SKILL.md`.
+- **Change an agent's model or effort:** edit `model:` (`opus`, `sonnet`, `haiku`, `inherit` or a full model ID) and `effort:` (`low`, `medium`, `high`, `xhigh`, `max`) in its frontmatter in `agents/<name>.md`. `claude plugin validate` doesn't check these values, so double-check spelling.
+- **Change the loop cap:** edit "max 2 rounds" in `skills/factory/SKILL.md` (Step 2 heading, the `round = …` loop, the `round < 2` / `round = 2` rules, the frontmatter description and `max_rounds` in the `status.json` example).
 - **Change the dashboard:** `ui/index.html` (page) and `ui/server.py` (API). The page reads `.factory/status.json`, whose format is defined in `skills/factory/SKILL.md`.
 - **Change what blocks a review:** edit the verdict rules in `agents/code-reviewer.md` and `agents/security-reviewer.md`. A round passes only if **both** approve. Currently blocking:
   - *code-reviewer*: test failures, spec not fully implemented, specialist notes/blockers (tool warnings like lint are reported but don't block), correctness bugs, serious maintainability problems.

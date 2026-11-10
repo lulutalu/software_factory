@@ -15,6 +15,7 @@ It exits by itself after --idle-timeout seconds without any request
 import argparse
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -27,16 +28,30 @@ ALLOWED_SUFFIXES = {".md", ".json"}
 MAX_FILE_BYTES = 2 * 1024 * 1024
 
 
+VERDICT_RE = re.compile(r"^VERDICT\s*:\s*(APPROVED|CHANGES_REQUESTED)\s*$", re.IGNORECASE)
+
+
 def first_verdict(path: Path):
-    """Return APPROVED / CHANGES_REQUESTED from a review file's first line, or None."""
+    """Verdict of a review file, using the same rule as the orchestrator (SKILL.md).
+
+    Skips blank lines and ``` fence lines; the first remaining line must be
+    "VERDICT: APPROVED" or "VERDICT: CHANGES_REQUESTED" (any case, extra spaces OK).
+    Only that line counts: a verdict quoted further down is ignored.
+    Returns None if the file doesn't exist yet, "INVALID" if it can't be parsed.
+    """
     try:
         with path.open(encoding="utf-8", errors="replace") as f:
-            line = f.readline().strip()
-    except OSError:
+            for raw in f:
+                line = raw.strip()
+                if not line or line.startswith("```"):
+                    continue
+                m = VERDICT_RE.match(line)
+                return m.group(1).upper() if m else "INVALID"
+    except FileNotFoundError:
         return None
-    if line.startswith("VERDICT:"):
-        return line.split(":", 1)[1].strip() or None
-    return None
+    except OSError:
+        return "INVALID"
+    return "INVALID"  # empty file, or only blanks/fences
 
 
 def list_files(root: Path):

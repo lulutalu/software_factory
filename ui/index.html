@@ -53,6 +53,7 @@
   .badge.APPROVED { background: var(--ok); }
   .badge.CHANGES_REQUESTED { background: var(--bad); }
   .badge.running { background: var(--accent); }
+  .badge.INVALID { background: var(--warn); }
   .counts { color: var(--muted); font-size: 12px; margin-top: 6px; }
 
   .viewer { display: grid; grid-template-columns: 240px 1fr; gap: 16px; min-height: 300px; }
@@ -158,7 +159,8 @@ function renderSteps(status) {
   if (status && status.round) {
     const extra = status.step === "questions" ? " · waiting for your answers in the terminal" :
                   status.step === "approval" ? " · waiting for your decision in the terminal" : "";
-    $("round").textContent = `Round ${status.round} / ${status.max_rounds || 3}${extra}`;
+    const max = Math.max(status.max_rounds || 2, status.round);  // extra round requested by the user
+    $("round").textContent = `Round ${status.round} / ${max}${extra}`;
   } else {
     $("round").textContent = status && status.step === "questions" ? "Waiting for your answers in the terminal" : "";
   }

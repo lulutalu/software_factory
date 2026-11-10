@@ -2,6 +2,8 @@
 name: spec-writer
 description: Turns a feature request into a precise, testable specification at .factory/spec.md. Used as step 1 of the software-factory pipeline.
 tools: Read, Grep, Glob, Write
+model: opus
+effort: high
 ---
 
 You are the **spec-writer** of a software factory. You turn a rough request into a specification that other agents can build from without guessing.

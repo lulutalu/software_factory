@@ -1,6 +1,6 @@
 ---
 name: factory
-description: Run the software-factory pipeline on a feature request — spec-writer → builder (planner) → domain specialists → code-reviewer + security-reviewer (in parallel), looping back to the builder on failed reviews (max 3 rounds), then asking the user for final approval.
+description: Run the software-factory pipeline on a feature request — spec-writer → builder (planner) → domain specialists → code-reviewer + security-reviewer (in parallel), looping back to the builder on failed reviews (max 2 rounds), then asking the user for final approval.
 argument-hint: <feature request>
 disable-model-invocation: true
 ---
@@ -22,6 +22,8 @@ If the request is empty, ask the user what they want built and stop until they a
 | Review | `software-factory:code-reviewer`, `software-factory:security-reviewer` (in parallel) |
 
 Subagents start with no context. Every prompt you send must include everything they need: the request, the round number, the task text and the file paths to read.
+
+Each agent's model and reasoning effort are set in its own frontmatter (`model:` / `effort:` in `agents/*.md`). **Never pass `model` or `effort` to the Agent tool** when you launch them: that would override the agent's setting for that call.
 
 ## Working directory: `.factory/`
 All handoffs go through files in the target project:
@@ -52,7 +54,7 @@ It prints `FACTORY_UI <url>` and writes the URL to `.factory/ui.json`. Give the 
   "request": "<the request>",
   "step": "setup | spec | questions | plan | build | review | approval | done",
   "round": 1,
-  "max_rounds": 3,
+  "max_rounds": 2,
   "waves": [
     { "wave": 1, "tasks": [
       { "id": "T1", "title": "…", "specialist": "backend", "status": "pending | running | done | blocked" }
@@ -65,6 +67,7 @@ It prints `FACTORY_UI <url>` and writes the URL to `.factory/ui.json`. Give the 
 ```
 
 - `round` is `null` before the first plan. On a new round, reset `waves` from the new plan and set both `reviews` back to `pending`.
+- `max_rounds` starts at 2. When the user asks for an extra round in Step 3, raise it to that round's number, so the dashboard never shows a round above the max (e.g. `3 / 3`, not `3 / 2`).
 - `outcome` becomes `approved`, `rejected` or `review_failed` at the end (Step 3).
 - The dashboard reads the verdicts directly from the review files, so `reviews` only needs to say whether each review is running.
 
@@ -72,19 +75,27 @@ It prints `FACTORY_UI <url>` and writes the URL to `.factory/ui.json`. Give the 
 1. Launch `spec-writer` with the request.
 2. Read `.factory/spec.md`. If *Open questions* is not `None`, ask the user those questions (use AskUserQuestion; group them, max 4 per call), then re-run `spec-writer` with the request **and** the answers. Allow at most 2 question passes; after that, carry any remaining open questions into the final approval summary.
 
-## Step 2: Build/review loop (max 3 rounds)
-For `round = 1, 2, 3`:
+## Step 2: Build/review loop (max 2 rounds)
+For `round = 1, 2`:
 
 1. **Plan**: launch `builder` with the round number. From round 2 on, tell it to read `.factory/review-code.md` and `.factory/review-security.md` (and any user feedback) and plan **only the fixes for the blocking findings**.
-2. **Dispatch**: read `.factory/plan.md` and group the tasks by `wave`. For each wave, in ascending order:
+2. **Validate the plan**: read `.factory/plan.md` and check every task before dispatching anything:
+   - it has a `specialist:` that is one of `frontend`, `backend`, `data`, `tests`;
+   - it has a `wave:` that is a positive integer and a non-empty `files:` list;
+   - no file appears in the `files:` of two tasks **in the same wave** (compare paths after trimming spaces and a leading `./`).
+
+   If anything fails, re-run `builder` **once** with the round number and the exact list of problems (e.g. "wave 1: `src/api.ts` is in T1 and T3"), then validate again. If the plan is still invalid, stop and show the problems to the user (AskUserQuestion: re-run the builder again with their guidance, or stop the run). Never fix the plan yourself.
+3. **Dispatch**: group the tasks by `wave`. For each wave, in ascending order:
    - Launch every task of the wave **in parallel**, as one message with several Agent calls. Use the subagent type `software-factory:<specialist>` and pass the full task block verbatim, plus "read `.factory/spec.md` for context".
    - Wait for the whole wave to finish before starting the next one.
    - Save each final report to `.factory/reports/round-<N>/<task-id>.md`.
    - If a specialist reports a blocker (for example it needed a file it didn't own), note it for the reviewers. Don't fix it yourself.
-3. **Review**: launch `code-reviewer` and `security-reviewer` **in parallel** (one message, two Agent calls), each with the round number and the list of report files. Wait for both, then read the first line of `.factory/review-code.md` and `.factory/review-security.md`:
-   - **Both** `VERDICT: APPROVED` → go to Step 3.
-   - Either one `VERDICT: CHANGES_REQUESTED` and round < 3 → next round.
-   - Either one `VERDICT: CHANGES_REQUESTED` and round = 3 → stop looping and go to Step 3, clearly flagging which review did **not** pass.
+4. **Review**: launch `code-reviewer` and `security-reviewer` **in parallel** (one message, two Agent calls), each with the round number and the list of report files. Wait for both, then read the verdict of `.factory/review-code.md` and `.factory/review-security.md`.
+   - **Reading a verdict:** skip blank lines and lines starting with ```` ``` ````. The first remaining line must be `VERDICT: APPROVED` or `VERDICT: CHANGES_REQUESTED` (ignore case and extra spaces). Look only at that line, never further down the file.
+   - **Unparseable verdict** (missing file, or that line doesn't match): re-run **only that reviewer** once, reminding it that line 1 must be the bare verdict line. If it's still unparseable, count it as `CHANGES_REQUESTED` and flag it to the user ("security review verdict unreadable, treated as CHANGES_REQUESTED").
+   - **Both** `APPROVED` → go to Step 3.
+   - Either one `CHANGES_REQUESTED` and round < 2 → next round.
+   - Either one `CHANGES_REQUESTED` and round = 2 → stop looping and go to Step 3, clearly flagging which review did **not** pass.
 
 Tell the user about progress in one short line per step (e.g. "Round 2 · wave 1: backend T1, data T2 running…").
 
@@ -97,7 +108,7 @@ Show the user a summary:
 
 Then ask (AskUserQuestion):
 - **Approve**: the work is accepted. Suggest a commit message, but **do not commit**: the user commits.
-- **Request changes**: collect their feedback and run **one more** round of Step 2 with the feedback passed to the builder as blocking findings. Ask for approval again afterwards.
+- **Request changes**: collect their feedback and run **one more** round of Step 2 (round = previous round + 1) with the feedback passed to the builder as blocking findings. In `status.json`, set `max_rounds` to that new round number if it's higher. Ask for approval again afterwards.
 - **Reject**: stop. Leave the files as they are and remind the user they can discard the changes (e.g. `git restore` / `git clean`) themselves.
 
 When the run ends, set `step` to `done` and fill in `outcome` in `status.json`. Leave the dashboard running so the user can browse the results; it stops by itself after 30 minutes without visitors. Tell the user they can stop it sooner with `kill <pid>` (the PID is in `.factory/ui.json`).
