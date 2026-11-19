@@ -11,6 +11,11 @@ A [Claude Code](https://docs.claude.com/en/docs/claude-code) plugin that turns o
 
 > **Status: proof of concept.** I built this to explore how to orchestrate several LLM agents reliably: contracts between agents, parallelism, least privilege, human-in-the-loop. The architecture is complete and the deterministic parts (dashboard server, plugin consistency) are covered by tests in CI. The agent behaviour itself is prompt-driven and has so far been exercised end to end on one small project ([example run](#example-run)). See [Limitations and next steps](#limitations-and-next-steps) for what would be needed to make it production-grade.
 
+## Why I built this
+
+First of all it was meant to be a short experimentation of AI and in this case Claude's skills and plugins capabilities. After a few iterations I realized the potential it could hold and started adding features on top of it while using it for simple and personal side-projects.
+It's in no mean a practical tool as is but it has helped me levelled up my skills immensely.
+
 ## How it works
 
 ```
