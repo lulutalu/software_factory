@@ -14,7 +14,7 @@ A [Claude Code](https://docs.claude.com/en/docs/claude-code) plugin that turns o
 ## Why I built this
 
 First of all it was meant to be a short experimentation of AI and in this case Claude's skills and plugins capabilities. After a few iterations I realized the potential it could hold and started adding features on top of it while using it for simple and personal side-projects.
-It's in no mean a practical tool as is but it has helped me levelled up my skills immensely.
+It's by no means a practical tool as is but it has helped me level up my skills immensely.
 
 ## How it works
 
