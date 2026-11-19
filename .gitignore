@@ -25,3 +25,6 @@ Thumbs.db
 *~
 .vscode/
 .idea/
+
+# ...except the recorded example run, which is part of the showcase
+!examples/*/.factory/

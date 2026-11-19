@@ -1,0 +1,67 @@
+{
+  "id": "spec-1",
+  "source": "browser",
+  "answered_at": "2026-11-19T12:56:59+00:00",
+  "answers": {
+    "q1": {
+      "choices": [
+        "Python 3.10+, standard library only (suggested)"
+      ],
+      "text": ""
+    },
+    "q2": {
+      "choices": [
+        "pytest"
+      ],
+      "text": ""
+    },
+    "q3": {
+      "choices": [
+        "~/.todo.json, override with --file PATH (suggested)"
+      ],
+      "text": ""
+    },
+    "q4": {
+      "choices": [
+        "Stable auto-increment IDs, never reused (suggested)"
+      ],
+      "text": ""
+    },
+    "q5": {
+      "choices": [
+        "`1. [ ] Buy milk` format, show all tasks (suggested)"
+      ],
+      "text": ""
+    },
+    "q6": {
+      "choices": [
+        "No-op success with a note, exit 0 (suggested)"
+      ],
+      "text": ""
+    },
+    "q7": {
+      "choices": [
+        "`todo` package + pyproject.toml: `python -m todo` and `todo` command (suggested)"
+      ],
+      "text": ""
+    },
+    "q8": {
+      "choices": [
+        "Fail with clear error, leave file untouched (suggested)"
+      ],
+      "text": ""
+    },
+    "q9": {
+      "choices": [
+        "README.md + CLAUDE.md at repo root (suggested)"
+      ],
+      "text": ""
+    },
+    "q10": {
+      "choices": [
+        "Reject empty text; join unquoted words (suggested)"
+      ],
+      "text": ""
+    }
+  }
+}

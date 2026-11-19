@@ -1,0 +1,42 @@
+{
+  "request": "a Python CLI todo app (add, list, done, remove) that stores tasks in a JSON file, with unit tests",
+  "step": "done",
+  "round": 2,
+  "max_rounds": 2,
+  "waves": [
+    {
+      "wave": 1,
+      "tasks": [
+        {
+          "id": "T1",
+          "title": "Fix load() so that an inaccessible store raises StoreError",
+          "specialist": "data",
+          "status": "done"
+        }
+      ]
+    },
+    {
+      "wave": 2,
+      "tasks": [
+        {
+          "id": "T2",
+          "title": "Regression tests for unreadable or inaccessible stores",
+          "specialist": "tests",
+          "status": "done"
+        },
+        {
+          "id": "T3",
+          "title": "Keep README.md and CLAUDE.md in sync with the new load behaviour",
+          "specialist": "backend",
+          "status": "done"
+        }
+      ]
+    }
+  ],
+  "reviews": {
+    "code": "done",
+    "security": "done"
+  },
+  "outcome": "approved",
+  "updated_at": "2026-11-19T14:15:25.770204+01:00"
+}

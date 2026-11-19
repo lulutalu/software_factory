@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Unit tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Run tests (stdlib unittest, no dependencies)
+        run: python -m unittest discover -s tests -v
+
+  example:
+    name: Example run output (agent-generated todo CLI)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/todo-cli
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the generated package with its test extra
+        run: pip install -e ".[test]"
+      - name: Run the generated test suite
+        run: python -m pytest -q
+      - name: Smoke-test the installed console script
+        run: todo --help
+
+  plugin:
+    name: Validate Claude Code plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Claude Code CLI (no login needed for validate)
+        run: npm install -g @anthropic-ai/claude-code@2.1.328
+      - name: claude plugin validate
+        run: claude plugin validate .

@@ -10,6 +10,11 @@ This repo is a **Claude Code plugin** (not an application). It ships one skill (
 - `ui/wait_answer.py`: background watcher the orchestrator starts while a question is pending; exits 0 on a browser answer, 3 when cancelled
 - `ui/index.html`: dashboard page (vanilla JS, no external assets, polls every 2s)
 - `agents/*.md`: subagents: `spec-writer`, `builder`, `frontend`, `backend`, `data`, `tests`, `code-reviewer`, `security-reviewer`
+- `tests/`: stdlib `unittest` suite. `test_server.py` (verdict parser, answer validation, HTTP security checks on a real server on a free port), `test_plugin.py` (manifests, agent frontmatter: name/model/effort, no `Edit` on read-only roles, SKILL.md references every agent, builder lists every specialist)
+- `.github/workflows/ci.yml`: GitHub Actions on push to main / PRs: tests on Python 3.10 and 3.13, the example's generated tests (`pip install -e ".[test]"`, pytest, `todo --help`), and `claude plugin validate .` (CLI pinned to `@anthropic-ai/claude-code@2.1.328`; validate works without login). CI never runs the agents (would need an API key, non-deterministic).
+- `LICENSE`: MIT (also `license` in `plugin.json`)
+- `examples/todo-cli/`: output of the first real run (2026-11-19, request: Python CLI todo app). `.factory/` audit trail + the generated code, copied from a scratch project with local paths replaced by `<project>` (`ui.json`, `pending.json`, caches left out). `.gitignore` re-includes `examples/*/.factory/`. CI installs it and runs its pytest suite. Don't edit it by hand: it's a record of what the agents produced.
+- `docs/images/`: dashboard screenshots from that run (questions, pipeline/reviews, approval), used in the README. Crop them so no local path is visible.
 
 ## Key design decisions
 - **Orchestration lives in the skill, not in an agent.** Subagents cannot spawn subagents, so the main session (driven by `SKILL.md`) dispatches every step. The builder is a *planner* only; it never writes production code.
@@ -34,16 +39,19 @@ This repo is a **Claude Code plugin** (not an application). It ships one skill (
 ## Conventions
 - Agent frontmatter: `name`, `description`, `tools`, `model`, `effort`. Read-only roles (spec-writer, builder, code-reviewer, security-reviewer) get no `Edit`. Only the two reviewers get `Bash`, to run tests and audit tools.
 - Plugin agents are referenced as `software-factory:<agent>` in the skill.
-- Validate after any change: `claude plugin validate .`
+- Validate after any change: `claude plugin validate .` and `python3 -m unittest discover -s tests`. If you add an agent or a model/effort value, `tests/test_plugin.py` must still pass.
 - `.gitignore` excludes run output (`.factory/`, `.factory-archive/`), Python caches, Playwright artifacts (`.playwright-mcp/`), `.claude/settings.local.json` and secret files. Put test runs of the pipeline in a scratch project, not in this repo.
 
 ## Ongoing work / status
-- v0.1.0: first version, not yet tested on a real project.
+- v0.2.0 (`plugin.json`). The GitHub repo is being prepared as a portfolio piece (job application: agentic AI / agent platform engineer). The README is written for that reader: it presents the project as a **proof of concept**, with a *Design decisions* table and a *Limitations and next steps* section. Keep that framing honest when the status changes.
 - Verdict rules (set by the user). The reviewers only drive the loop; the user has the final say.
   - code-reviewer blocks on: test failures; spec not fully implemented (any R missing, any A failing or unverifiable); specialist *Notes / blockers* not `None` (tool warnings in *Checks run* are non-blocking); correctness bugs; serious maintainability problems (duplication, dead code, ignoring conventions). Style and naming are non-blocking.
   - security-reviewer blocks on: any Medium/High/Critical finding. Low/Info are non-blocking.
-- Dashboard tested by hand on fake `.factory/` data (rendering, live updates, path traversal, escaping). Not yet tested during a real run.
-- Browser answers tested on a mock `.factory/` (curl: missing/wrong token, cross-site Origin, rebinding Host, wrong content type, oversized body, stale id, invalid options, double answer → all refused; Playwright: approval form, error message, successful answer; watcher exit 0 and 3; SIGTERM cleanup). The orchestrator side (SKILL.md procedure) is not yet exercised in a real run. Open point: Claude treats background-task notifications as "not user input", so it may ask for terminal confirmation before acting on a browser answer; check during the first real run.
-- Plan validation, the verdict re-run and the 2-round cap are prompt-level changes that haven't been exercised in a real run yet. The tolerant `first_verdict` parser has been checked by a quick script.
+- **First real run done (2026-11-19, `examples/todo-cli/`):** spec (10 open questions, answered from the dashboard) → round 1 (4 tasks, 2 waves; tests specialist correctly reported a blocker when pytest was missing) → code review CHANGES_REQUESTED on a real bug (C1, `Path.exists()` hiding permission errors) while security approved → round 2 planned only the fix → both approved → user approved in the terminal. Plan validation, the 2-round loop, parallel reviewers, the dashboard and the browser answer path all worked in practice.
+  - Observed issues to work on: the spec-writer asks too many questions (10 for a small CLI); the orchestrator asked extra terminal confirmations not in `SKILL.md` ("4 derived points", "builder's 5 choices"); it also told the code-reviewer to treat an unverifiable criterion (A1, no pip in the environment) as non-blocking, which the verdict rules don't provide for.
+- Dashboard tested by hand on fake `.factory/` data (rendering, live updates, path traversal, escaping) and during the first real run.
+- Browser answers tested on a mock `.factory/` (curl: missing/wrong token, cross-site Origin, rebinding Host, wrong content type, oversized body, stale id, invalid options, double answer → all refused; Playwright: approval form, error message, successful answer; watcher exit 0 and 3; SIGTERM cleanup). The orchestrator side worked in the first real run (spec questions answered in the browser, approval in the terminal). Open point still partly visible: after the browser answer the orchestrator asked for extra terminal confirmations (see above).
+- Plan validation and the 2-round loop were exercised in the first real run; the verdict re-run (unparseable verdict) has not been triggered yet. The tolerant `first_verdict` parser is covered by `tests/test_server.py`.
 - Known limitation: archiving `.factory/` doesn't stop a dashboard from a previous run; it times out on its own.
-- Not yet decided: LICENSE (only needed for public plugin directory submission), plugin icon, optional user checkpoint after the spec step.
+- Decided: MIT license. CI = checks only (no demo workflow running the agents).
+- Not yet decided: plugin icon (validate warns ICON_MISSING), optional user checkpoint after the spec step.

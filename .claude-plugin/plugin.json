@@ -1,8 +1,17 @@
 {
   "name": "software-factory",
   "version": "0.2.0",
-  "description": "Multi-agent development pipeline: spec-writer -> builder (planner) -> domain specialists -> reviewer, with a fix loop and final user approval.",
+  "description": "Multi-agent development pipeline for Claude Code: spec-writer -> builder (planner) -> parallel domain specialists -> code + security reviewers, with a fix loop, a live dashboard and final user approval.",
   "author": {
     "name": "Loïc Dubouloz"
-  }
+  },
+  "license": "MIT",
+  "repository": "https://github.com/lulutalu/software_factory",
+  "keywords": [
+    "multi-agent",
+    "orchestration",
+    "code-review",
+    "security-review",
+    "subagents"
+  ]
 }
